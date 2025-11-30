@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>发送弹幕</title>
+</head>
+<body>
+<h2>发送弹幕</h2>
+<input type="text" id="username" placeholder="你的名字">
+<input type="text" id="content" placeholder="留言内容">
+<button onclick="sendMessage()">发送</button>
+
+<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+<script>
+const socket = io();
+
+function sendMessage(){
+    const username = document.getElementById('username').value;
+    const content = document.getElementById('content').value;
+    if(content.trim() === '') return;
+    socket.emit('send_message', {username, content});
+    document.getElementById('content').value = '';
+}
+</script>
+</body>
+</html>

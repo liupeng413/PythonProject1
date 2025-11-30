@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>弹幕留言墙-炫酷彩蛋版</title>
+<style>
+body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
+#danmu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 1; }
+canvas#particles { position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:0; }
+
+.danmu-item {
+    position: absolute;
+    white-space: nowrap;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px #000;
+    cursor: pointer;
+    transition: transform 0.3s, color 0.3s, text-shadow 0.3s;
+}
+.danmu-item.highlight {
+    transform: scale(2);
+    color: #ffff00 !important;
+    text-shadow: 2px 2px 5px #000;
+    z-index: 9999;
+}
+
+#qrcode-container {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    width: 160px;
+    height: 200px;
+    background: rgba(255,255,255,0.9);
+    padding: 10px;
+    box-sizing: border-box;
+    border-radius: 10px;
+    text-align: center;
+    z-index: 2;
+}
+#qrcode-container h4 {
+    margin: 0 0 5px 0;
+    font-size: 14px;
+    color: #000;
+}
+</style>
+</head>
+<body>
+
+<canvas id="particles"></canvas>
+<div id="danmu"></div>
+<div id="qrcode-container">
+    <h4>扫码发送留言</h4>
+</div>
+
+<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+
+<script>
+const socket = io.connect(location.origin);
+
+// 弹幕轨道设置
+const lineHeight = 36;
+const qrHeight = 220;
+const maxLines = Math.floor((window.innerHeight - qrHeight) / lineHeight);
+const tracks = Array.from({length: maxLines}, () => []);
+const colors = ['#ff4d4f','#ffa940','#ffec3d','#36cfc9','#5c7cfa','#9254de','#f759ab'];
+
+// 隐藏关键字与炫酷特效
+const hiddenKeywords = {
+    "JVM": { effect: "bigText" },
+    "封装": { effect: "bigText" },
+    "继承": { effect: "bigText" },
+    "多态": { effect: "bigText" },
+    "extends": { effect: "bigText" },
+    "implements": { effect: "bigText" },
+    "interface": { effect: "bigText" },
+    "abstract": { effect: "bigText" },
+    "面向对象程序设计": { effect: "bigText" },
+    "寒假快乐": { effect: "bigText" },
+    "老师最帅": { effect: "textRain" },
+    "彩蛋": { effect: "fullFireworks" }
+};
+
+// -------------------- 弹幕显示 --------------------
+socket.on('new_message', data => { showDanmu(data.username + ': ' + data.content); });
+
+function showDanmu(text){
+    const danmu = document.createElement('div');
+    danmu.className = 'danmu-item';
+    danmu.innerText = text;
+    const fontSize = Math.floor(Math.random() * 10 + 24);
+    danmu.style.fontSize = fontSize + 'px';
+    danmu.style.color = colors[Math.floor(Math.random() * colors.length)];
+
+    const container = document.getElementById('danmu');
+    container.appendChild(danmu);
+
+    // 轨道选择
+    let trackIndex = 0;
+    let minRight = Infinity;
+    for(let i=0;i<tracks.length;i++){
+        const last = tracks[i][tracks[i].length-1];
+        if(!last){ trackIndex=i; break; }
+        const right = parseFloat(last.style.left) + last.offsetWidth;
+        if(right < minRight){ minRight = right; trackIndex=i; }
+    }
+
+    let left = window.innerWidth;
+    let top = trackIndex * lineHeight;
+    const last = tracks[trackIndex][tracks[trackIndex].length-1];
+    if(last){
+        const lastRight = parseFloat(last.style.left) + last.offsetWidth;
+        if(lastRight > left - 50){ top += lineHeight/2; if(top > (maxLines-1)*lineHeight) top = (maxLines-1)*lineHeight;}
+    }
+    danmu.style.top = top + 'px';
+    tracks[trackIndex].push(danmu);
+    const speed = Math.random()*2 + 1;
+
+    // ----------------- 触发隐藏关键字特效 -----------------
+    const msg = text.toLowerCase();
+    for(const key in hiddenKeywords){
+        if(msg.includes(key.toLowerCase())){
+            const effect = hiddenKeywords[key].effect;
+            if(effect==="textRain") triggerTextRain(key);
+            else if(effect==="bigText") triggerFullScreenText(key,5000);
+            else if(effect==="fullFireworks") triggerFullScreenFireworks();
+        }
+    }
+
+    // 点击高亮放大
+    danmu.addEventListener('click', ()=>{
+        danmu.classList.add('highlight');
+        setTimeout(()=> danmu.classList.remove('highlight'),3000);
+    });
+
+    // 弹幕移动
+    const move = ()=>{
+        left -= speed;
+        danmu.style.left = left+'px';
+        if(left + danmu.offsetWidth > 0) requestAnimationFrame(move);
+        else {
+            danmu.remove();
+            tracks[trackIndex] = tracks[trackIndex].filter(d => d !== danmu);
+        }
+    }
+    move();
+}
+
+// -------------------- 二维码 --------------------
+const qrContainer = document.getElementById('qrcode-container');
+const sendUrl = window.location.origin + '/';
+QRCode.toCanvas(sendUrl, { width: 130, color: { dark:'#000', light:'#fff' } }, function(err, canvas){
+    qrContainer.appendChild(canvas);
+});
+
+// -------------------- 粒子背景 --------------------
+const canvas = document.getElementById('particles');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+const particles = [];
+
+function createParticles(){
+    for(let i=0;i<100;i++){
+        particles.push({x:Math.random()*canvas.width, y:Math.random()*canvas.height, r:Math.random()*3+1, dx:(Math.random()-0.5)*1.5, dy:(Math.random()-0.5)*1.5});
+    }
+}
+createParticles();
+
+// -------------------- 全屏大字 div --------------------
+const bigTextDiv = document.createElement('div');
+bigTextDiv.style.position = 'fixed';
+bigTextDiv.style.top = '50%';
+bigTextDiv.style.left = '50%';
+bigTextDiv.style.transform = 'translate(-50%, -50%)';
+bigTextDiv.style.fontSize = '10vw';
+bigTextDiv.style.fontWeight = 'bold';
+bigTextDiv.style.color = '#ff0000';
+bigTextDiv.style.textShadow = '2px 2px 10px #000';
+bigTextDiv.style.zIndex = 9999;
+bigTextDiv.style.pointerEvents = 'none';
+bigTextDiv.style.opacity = 0;
+bigTextDiv.style.transition = 'opacity 0.3s, transform 0.3s';
+document.body.appendChild(bigTextDiv);
+
+// 全屏大字函数
+function triggerFullScreenText(text, duration=5000){
+    bigTextDiv.innerText = text;
+    bigTextDiv.style.opacity = 1;
+    bigTextDiv.style.transform = 'translate(-50%, -50%) scale(1.2)';
+    const colorInterval = setInterval(()=>{
+        bigTextDiv.style.color = `hsl(${Math.random()*360},100%,50%)`;
+    }, 200);
+    setTimeout(()=>{
+        bigTextDiv.style.opacity = 0;
+        bigTextDiv.style.transform = 'translate(-50%, -50%) scale(1)';
+        clearInterval(colorInterval);
+    }, duration);
+}
+
+// 粒子绘制
+function drawParticles(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    particles.forEach((p,i)=>{
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+        ctx.fillStyle = p.color || '#fff';
+        ctx.fill();
+        p.x += p.dx; p.y += p.dy;
+        if(p.x<0||p.x>canvas.width) p.dx*=-1;
+        if(p.y<0||p.y>canvas.height) p.dy*=-1;
+        if(p.life !== undefined){
+            p.life--;
+            if(p.life <=0) particles.splice(i,1);
+        }
+    });
+    requestAnimationFrame(drawParticles);
+}
+drawParticles();
+
+// 文字雨效果
+function triggerTextRain(text){
+    for(let i=0;i<80;i++){
+        const rain = document.createElement('div');
+        rain.innerText = text;
+        rain.style.position = 'absolute';
+        rain.style.left = Math.random()*window.innerWidth + 'px';
+        rain.style.top = '-50px';
+        rain.style.fontSize = (20 + Math.random()*30) + 'px';
+        rain.style.color = `hsl(${Math.random()*360},100%,50%)`;
+        rain.style.fontWeight = 'bold';
+        rain.style.zIndex = 9999;
+        document.body.appendChild(rain);
+
+        let top = -50;
+        const speed = Math.random()*3;
+        const move = ()=>{
+            top += speed;
+            rain.style.top = top+'px';
+            if(top < window.innerHeight) requestAnimationFrame(move);
+            else rain.remove();
+        }
+        move();
+    }
+}
+
+// 全屏烟花
+function triggerFullScreenFireworks(){
+    for(let i=0;i<200;i++){
+        particles.push({
+            x: Math.random()*canvas.width,
+            y: Math.random()*canvas.height,
+            r: Math.random()*3+2,
+            dx: (Math.random()-0.5)*8,
+            dy: (Math.random()-0.5)*8,
+            color: `hsl(${Math.random()*360},100%,50%)`,
+            life: 60
+        });
+    }
+}
+
+// 窗口自适应
+window.addEventListener('resize', ()=>{canvas.width=window.innerWidth; canvas.height=window.innerHeight;});
+</script>
+</body>
+</html>

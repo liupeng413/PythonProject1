@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>发送留言</title>
+</head>
+<body>
+<h2>留言墙</h2>
+<form id="sendForm">
+  用户名: <input type="text" name="username" placeholder="你的名字">
+  留言: <input type="text" name="content" placeholder="输入留言">
+  <button type="submit">发送</button>
+</form>
+
+<script>
+document.getElementById('sendForm').onsubmit = e => {
+    e.preventDefault();
+    fetch('/send_message', {
+        method: 'POST',
+        body: new URLSearchParams(new FormData(e.target))
+    });
+    e.target.content.value = '';
+    alert('留言已发送！');
+};
+</script>
+</body>
+</html>
